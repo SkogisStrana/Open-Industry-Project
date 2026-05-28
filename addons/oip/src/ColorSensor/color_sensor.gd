@@ -190,7 +190,7 @@ static func _disable_collisions_recursive(node: Node) -> void:
 
 func _on_simulation_started() -> void:
 	if enable_comms:
-		_tag.register(tag_group_name, tag_name)
+		_tag.register(tag_group_name, tag_name, OIPComms.TAG_TYPE_INT32)
 
 
 func _tag_group_initialized(tag_group_name_param: String) -> void:

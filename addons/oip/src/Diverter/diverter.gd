@@ -115,7 +115,7 @@ func _physics_process(_delta: float) -> void:
 
 func _on_simulation_started() -> void:
 	if enable_comms:
-		_tag.register(tag_group_name, tag_name)
+		_tag.register(tag_group_name, tag_name, OIPComms.TAG_TYPE_BOOL)
 
 func _tag_group_initialized(tag_group_name_param: String) -> void:
 	if _tag.on_group_initialized(tag_group_name_param):

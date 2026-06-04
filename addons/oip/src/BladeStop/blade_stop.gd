@@ -36,7 +36,6 @@ const BLADE_CORNER_LOCAL_X: float = 0.1048
 
 var _active_pos: float = 0.24
 var _tag := OIPCommsTag.new()
-var _tween: Tween
 @onready var _blade: StaticBody3D = $Blade
 @onready var _air_pressure_r: MeshInstance3D = $Corners/AirPressureR
 @onready var _air_pressure_l: MeshInstance3D = $Corners/AirPressureL
@@ -61,8 +60,6 @@ func _validate_property(property: Dictionary) -> void:
 
 
 func get_snap_features() -> Array:
-	if not Engine.is_editor_hint():
-		return []
 	return [
 		{
 			"shape": ConveyorSnapFeatures.Shape.POINT,
@@ -70,6 +67,7 @@ func get_snap_features() -> Array:
 			"local_pos": Vector3(SNAP_BLADE_X_OFFSET, 0, 0),
 			"local_outward": Vector3(0, 1, 0),
 			"target_local_y": ConveyorSnapFeatures.BLADE_STOP_TARGET_LOCAL_Y,
+			# Loose threshold so drops near a roller conveyor still catch.
 			"visible_threshold": 2.0,
 			"auto_fit_target_width": true,
 			"native_z_width": SNAP_NATIVE_Z_WIDTH,
@@ -79,7 +77,7 @@ func get_snap_features() -> Array:
 
 # Required so the editor's _sanitize_preview_node doesn't strip the script.
 func _get_custom_preview_node() -> Node3D:
-	var preview_scene := load("res://addons/oip/parts/BladeStop.tscn") as PackedScene
+	var preview_scene := load("res://parts/BladeStop.tscn") as PackedScene
 	var preview_node := preview_scene.instantiate(PackedScene.GEN_EDIT_STATE_DISABLED) as Node3D
 	preview_node.set_meta("is_preview", true)
 	_disable_collisions_recursive(preview_node)
@@ -88,28 +86,27 @@ func _get_custom_preview_node() -> Node3D:
 
 func _disable_collisions_recursive(node: Node) -> void:
 	if node is CollisionShape3D:
-		node.disabled = true
+		(node as CollisionShape3D).disabled = true
 	if node is CollisionObject3D:
-		node.collision_layer = 0
-		node.collision_mask = 0
+		var body := node as CollisionObject3D
+		body.collision_layer = 0
+		body.collision_mask = 0
 	for child in node.get_children():
 		_disable_collisions_recursive(child)
 
 
 func _enter_tree() -> void:
-	if Engine.is_editor_hint() and has_meta("is_preview"):
+	if has_meta("is_preview"):
 		return
 	tag_group_name = OIPCommsSetup.default_tag_group(tag_group_name)
-	if Engine.is_editor_hint():
-		EditorInterface.simulation_started.connect(_on_simulation_started)
+	Simulation.started.connect(_on_simulation_started)
 	OIPCommsSetup.connect_comms(self, _tag_group_initialized, _tag_group_polled)
 
 
 func _exit_tree() -> void:
-	if Engine.is_editor_hint() and has_meta("is_preview"):
+	if has_meta("is_preview"):
 		return
-	if Engine.is_editor_hint():
-		EditorInterface.simulation_started.disconnect(_on_simulation_started)
+	Simulation.started.disconnect(_on_simulation_started)
 	OIPCommsSetup.disconnect_comms(self, _tag_group_initialized, _tag_group_polled)
 
 
@@ -137,26 +134,22 @@ func use() -> void:
 
 
 func _up() -> void:
-	if _tween:
-		_tween.kill()
-	_tween = create_tween().set_parallel()
-	_tween.tween_property(_blade, "position", Vector3(_blade.position.x, air_pressure_height + _active_pos, _blade.position.z), 0.15)
-	_tween.tween_property(_blade_corner_r, "position", Vector3(_blade_corner_r.position.x, _active_pos, _blade_corner_r.position.z), 0.15)
-	_tween.tween_property(_blade_corner_l, "position", Vector3(_blade_corner_l.position.x, _active_pos, _blade_corner_l.position.z), 0.15)
+	var tween := create_tween().set_parallel()
+	tween.tween_property(_blade, "position", Vector3(_blade.position.x, air_pressure_height + _active_pos, _blade.position.z), 0.15)
+	tween.tween_property(_blade_corner_r, "position", Vector3(_blade_corner_r.position.x, _active_pos, _blade_corner_r.position.z), 0.15)
+	tween.tween_property(_blade_corner_l, "position", Vector3(_blade_corner_l.position.x, _active_pos, _blade_corner_l.position.z), 0.15)
 
 
 func _down() -> void:
-	if _tween:
-		_tween.kill()
-	_tween = create_tween().set_parallel()
-	_tween.tween_property(_blade, "position", Vector3(_blade.position.x, air_pressure_height, _blade.position.z), 0.15)
-	_tween.tween_property(_blade_corner_r, "position", Vector3(_blade_corner_r.position.x, 0, _blade_corner_r.position.z), 0.15)
-	_tween.tween_property(_blade_corner_l, "position", Vector3(_blade_corner_l.position.x, 0, _blade_corner_l.position.z), 0.15)
+	var tween := create_tween().set_parallel()
+	tween.tween_property(_blade, "position", Vector3(_blade.position.x, air_pressure_height, _blade.position.z), 0.15)
+	tween.tween_property(_blade_corner_r, "position", Vector3(_blade_corner_r.position.x, 0, _blade_corner_r.position.z), 0.15)
+	tween.tween_property(_blade_corner_l, "position", Vector3(_blade_corner_l.position.x, 0, _blade_corner_l.position.z), 0.15)
 
 
 func _on_simulation_started() -> void:
 	if enable_comms:
-		_tag.register(tag_group_name, tag_name)
+		_tag.register(tag_group_name, tag_name, OIPComms.TAG_TYPE_BOOL)
 
 
 func _tag_group_initialized(tag_group_name_param: String) -> void:

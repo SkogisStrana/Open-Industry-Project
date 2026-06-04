@@ -53,7 +53,7 @@ func _enter_tree() -> void:
 	editor_settings.add_shortcut("Open Industry Project/Snap Conveyor", snap_shortcut)
 
 	# Path-loaded: autoloads parse before sibling class_names register.
-	var live_snap_script: GDScript = load("res://addons/oip/addons/oip_ui/Autoload/ConveyorLiveSnap.gd")
+	var live_snap_script: GDScript = load("res://addons/oip_ui/Autoload/ConveyorLiveSnap.gd")
 	var live_snap: Node = live_snap_script.new()
 	live_snap.name = "ConveyorLiveSnap"
 	add_child(live_snap)
@@ -231,7 +231,7 @@ static func _calculate_diverter_intersection_for_transform(snapped_conveyor: Nod
 
 ## Derive [param local]'s side-guard openings from geometry: open the guard wherever another
 ## conveyor's end — or a diverter's push side — physically meets [param local]'s side.
-static func derive_openings_by_geometry(local: Node3D) -> Array[SideGuardOpening]:
+func derive_openings_by_geometry(local: Node3D) -> Array[SideGuardOpening]:
 	var result: Array[SideGuardOpening] = []
 	if not local.is_inside_tree():
 		return result
@@ -297,6 +297,41 @@ static func derive_extents_by_geometry(local: Node3D) -> Dictionary:
 				var extents: Dictionary = geo.snapped_extents
 				for k: String in extents:
 					result[k] = extents[k]
+	return result
+
+
+## Returns [param local]'s roller-grid inputs from its butted neighbours: {anchor: world point the
+## grid passes through — a curve's end roller, or a collinear straight's inherited anchor, else null
+## (world origin); front_butt/back_butt: whether that end abuts a collinear neighbour}.
+func resolve_roller_grid(local: Node3D) -> Dictionary:
+	var result: Dictionary = {"anchor": null, "front_butt": false, "back_butt": false}
+	if not local.is_inside_tree():
+		return result
+	var local_ends := _get_end_info(local)
+	var local_xform := local.global_transform
+	var local_axis: Vector3 = local_xform.basis.x.normalized()
+	for other: Node3D in _candidates_near(local, 0.3):
+		if other == local or not is_instance_valid(other) or not other.is_inside_tree():
+			continue
+		var is_curve: bool = _is_curved_roller_conveyor(other)
+		var is_straight: bool = _is_roller_conveyor(other)
+		if not is_curve and not is_straight:
+			continue
+		var other_xform := other.global_transform
+		var collinear: bool = absf(other_xform.basis.x.normalized().dot(local_axis)) > 0.99
+		for oe: Dictionary in _get_end_info(other):
+			var oe_world: Vector3 = other_xform * (oe.pos as Vector3)
+			for le: Dictionary in local_ends:
+				if (local_xform * (le.pos as Vector3)).distance_to(oe_world) >= 0.15:
+					continue
+				if collinear:
+					result[String(le.name) + "_butt"] = true
+				if is_curve:
+					result.anchor = oe_world
+				elif collinear and result.anchor == null and other.has_method(&"get_roller_grid_anchor"):
+					var a: Variant = other.get_roller_grid_anchor()
+					if a != null:
+						result.anchor = a
 	return result
 
 
@@ -419,84 +454,38 @@ static func _candidates_near(node: Node3D, grow: float) -> Array[Node3D]:
 ## dragged out of contact can still ping the neighbor it left.
 static var _contact_neighbors: Dictionary = {}
 
-static var _leg_overlap_neighbors: Dictionary = {}
-
 
 ## Ping every port-node near [param mover] — plus those it was near last call — to re-derive
 ## from current contact.
-static func notify_contacts_rebuild(mover: Node3D) -> void:
+func notify_contacts_rebuild(mover: Node3D) -> void:
 	var id: int = mover.get_instance_id()
 	# Re-place the mover before pinging, so its new cell is live for neighbors deriving this
 	# frame — what keeps multi-move frames stale-free.
 	grid_update(mover)
-	var near: Array[Node3D] = []
-	var crossers: Array[Node3D] = []
+	var prev: Array = _contact_neighbors.get(id, [])
+	var current: Array[Node3D] = []
 	# is_inside_tree() avoids the error get_tree() logs when the mover is out of tree.
 	if mover.is_inside_tree():
-		var candidates: Array[Node3D] = _candidates_near(mover, 0.3)
-		var m_aabb: AABB = _world_aabb(mover).grow(0.3)
-		near = _find_near_port_nodes(mover, m_aabb, candidates)
-		crossers = _xz_overlapping_conveyors(mover, m_aabb, candidates)
-	_ping_changed_neighbors(_contact_neighbors, id, near, _ping_rebuild)
-	_ping_changed_neighbors(_leg_overlap_neighbors, id, crossers, _queue_leg_recheck)
-
-
-static func _ping_changed_neighbors(store: Dictionary, id: int, current: Array[Node3D], ping: Callable) -> void:
-	var prev: Array = store.get(id, [])
+		current = _find_near_port_nodes(mover)
+	var seen: Dictionary = {}
 	for n: Node3D in current:
-		ping.call(n)
+		seen[n.get_instance_id()] = true
+		_ping_rebuild(n)
 	for n: Variant in prev:
-		if n is Node3D and is_instance_valid(n) and not current.has(n):
-			ping.call(n)
+		if n is Node3D and is_instance_valid(n) and not seen.has((n as Node3D).get_instance_id()):
+			_ping_rebuild(n)
 	if current.is_empty():
-		store.erase(id)
+		_contact_neighbors.erase(id)
 	else:
-		store[id] = current
+		_contact_neighbors[id] = current
 
 
-static var _pending_leg_rechecks: Dictionary = {}
-static var _leg_recheck_flush_queued: bool = false
-
-
-func _queue_leg_recheck(n: Node3D) -> void:
-	if not is_instance_valid(n) or not n.is_inside_tree() or n.is_queued_for_deletion():
-		return
-	_pending_leg_rechecks[n.get_instance_id()] = n
-	if _leg_recheck_flush_queued:
-		return
-	_leg_recheck_flush_queued = true
-	get_tree().physics_frame.connect(_flush_leg_rechecks, CONNECT_ONE_SHOT)
-
-
-func _flush_leg_rechecks() -> void:
-	_leg_recheck_flush_queued = false
-	var pending: Dictionary = _pending_leg_rechecks
-	_pending_leg_rechecks = {}
-	for n: Variant in pending.values():
-		if n is Node3D and is_instance_valid(n) and (n as Node3D).is_inside_tree() \
-				and not (n as Node3D).is_queued_for_deletion():
-			(n as Node3D).call(&"_request_legs_recheck")
-
-
-static func _xz_overlapping_conveyors(mover: Node3D, m_aabb: AABB, candidates: Array[Node3D]) -> Array[Node3D]:
-	var result: Array[Node3D] = []
-	for other: Node3D in candidates:
-		if other == mover or not is_instance_valid(other) or not other.is_inside_tree():
-			continue
-		if not other.has_method(&"_request_legs_recheck"):
-			continue
-		var o: AABB = _world_aabb(other)
-		if m_aabb.position.x < o.end.x and m_aabb.end.x > o.position.x \
-				and m_aabb.position.z < o.end.z and m_aabb.end.z > o.position.z:
-			result.append(other)
-	return result
-
-
-static func _find_near_port_nodes(mover: Node3D, m_aabb: AABB, candidates: Array[Node3D]) -> Array[Node3D]:
+static func _find_near_port_nodes(mover: Node3D) -> Array[Node3D]:
 	var result: Array[Node3D] = []
 	# Bounding-box overlap, not center distance: a long thin belt's far (discharge)
 	# end is nowhere near its center, so a radius test would miss neighbors there.
-	for other: Node3D in candidates:
+	var m_aabb: AABB = _world_aabb(mover).grow(0.3)
+	for other: Node3D in _candidates_near(mover, 0.3):
 		if other == mover or not is_instance_valid(other) or not other.is_inside_tree():
 			continue
 		if m_aabb.intersects(_world_aabb(other)):

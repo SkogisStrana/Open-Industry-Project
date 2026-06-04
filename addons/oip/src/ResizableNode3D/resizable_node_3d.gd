@@ -74,25 +74,31 @@ func _get_scale_warning_text() -> String:
 	return "Please use the 'size' property instead of scale."
 
 func _enter_tree() -> void:
-	if Engine.is_editor_hint():
-		if not EditorInterface.transform_requested.is_connected(_transform_requested):
-			EditorInterface.transform_requested.connect(_transform_requested)
-		if not EditorInterface.transform_commited.is_connected(_transform_commited):
-			EditorInterface.transform_commited.connect(_transform_commited)
+	if not Engine.is_editor_hint():
+		return
+	if not EditorInterface.transform_requested.is_connected(_transform_requested):
+		EditorInterface.transform_requested.connect(_transform_requested)
+	if not EditorInterface.transform_commited.is_connected(_transform_commited):
+		EditorInterface.transform_commited.connect(_transform_commited)
 
 func _exit_tree() -> void:
-	if Engine.is_editor_hint():
-		if EditorInterface.transform_requested.is_connected(_transform_requested):
-			EditorInterface.transform_requested.disconnect(_transform_requested)
-		if EditorInterface.transform_commited.is_connected(_transform_commited):
-			EditorInterface.transform_commited.disconnect(_transform_commited)
+	if not Engine.is_editor_hint():
+		return
+	if EditorInterface.transform_requested.is_connected(_transform_requested):
+		EditorInterface.transform_requested.disconnect(_transform_requested)
+	if EditorInterface.transform_commited.is_connected(_transform_commited):
+		EditorInterface.transform_commited.disconnect(_transform_commited)
 
 func _transform_requested(data: Dictionary) -> void:
 	if not EditorInterface.get_selection().get_selected_nodes().has(self):
 		return
 
 	if data.has("motion"):
-		var motion := Vector3(data["motion"][0], data["motion"][1], data["motion"][2])
+		var md: Array = data["motion"]
+		var mx: float = md[0]
+		var my: float = md[1]
+		var mz: float = md[2]
+		var motion := Vector3(mx, my, mz)
 
 		if not transform_in_progress:
 			original_size = size

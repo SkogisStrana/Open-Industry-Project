@@ -5,7 +5,7 @@ extends ResizableNode3D
 ## Multi-segment belt conveyor. Origin sits at the START of segment 0; +X is
 ## segment 0's tangent, +Z is across the belt.
 
-const _BeltPathCollisionScript := preload("res://addons/oip/src/Conveyor/belt_path_collision.gd")
+const _BeltPathCollisionScript := preload("res://src/Conveyor/belt_path_collision.gd")
 
 const _MIN_RUN_LENGTH: float = 0.01
 
@@ -109,7 +109,9 @@ func _apply_shape_preset(preset: ShapePreset) -> void:
 		return
 	var new_segs: Array[BeltSegment] = []
 	for entry: Array in template:
-		new_segs.append(_make_segment(entry[0], entry[1]))
+		var seg_len: float = entry[0]
+		var seg_angle: float = entry[1]
+		new_segs.append(_make_segment(seg_len, seg_angle))
 	segments = new_segs
 	if preset == ShapePreset.WALK_THRU:
 		var total_len: float = _PRESET_FLAT_LEN * 3.0 + _PRESET_RAMP_LEN * 2.0
@@ -198,7 +200,11 @@ func _transform_requested(data: Dictionary) -> void:
 		return
 	if not data.has("motion"):
 		return
-	var motion := Vector3(data["motion"][0], data["motion"][1], data["motion"][2])
+	var md: Array = data["motion"]
+	var mx: float = md[0]
+	var my: float = md[1]
+	var mz: float = md[2]
+	var motion := Vector3(mx, my, mz)
 
 	if not transform_in_progress:
 		_drag_initial_width = width
@@ -272,7 +278,7 @@ func _segments_total_length() -> float:
 			_belt_material.set_shader_parameter("use_alternate_texture", belt_texture == BeltTexture.ALTERNATE)
 
 ## Physics material applied to per-run bodies.
-@export var physics_material: PhysicsMaterial = preload("res://addons/oip/parts/BeltSurfaceMaterial.tres"):
+@export var physics_material: PhysicsMaterial = preload("res://parts/BeltSurfaceMaterial.tres"):
 	set(value):
 		physics_material = value
 		_apply_physics_material()
@@ -324,7 +330,7 @@ func _segments_total_length() -> float:
 		floor_plane = value
 		_request_legs_refresh()
 
-@export var leg_model_scene: PackedScene = preload("res://addons/oip/parts/ConveyorLeg.tscn"):
+@export var leg_model_scene: PackedScene = preload("res://parts/ConveyorLeg.tscn"):
 	set(value):
 		leg_model_scene = value
 		_request_rebuild()
@@ -456,8 +462,6 @@ func _validate_property(property: Dictionary) -> void:
 
 
 func get_snap_features() -> Array:
-	if not Engine.is_editor_hint():
-		return []
 	# Drop-from-FileSystem invokes _snap_transform before _ready; lazy-build.
 	if _path == null:
 		_path = BeltPath.build(segments, 0.0, 0.0, 0.0, height)
@@ -512,7 +516,7 @@ func get_snap_features() -> Array:
 # Drag-from-FileSystem preview. GEN_EDIT_STATE_INSTANCE reuses a holder whose
 # transform carries over from the previous drop — DISABLED avoids that.
 func _get_custom_preview_node() -> Node3D:
-	var preview_scene := load("res://addons/oip/parts/BeltConveyor.tscn") as PackedScene
+	var preview_scene := load("res://parts/BeltConveyor.tscn") as PackedScene
 	var preview_node := preview_scene.instantiate(PackedScene.GEN_EDIT_STATE_DISABLED) as Node3D
 	preview_node.set_meta("is_preview", true)
 	_disable_collisions_recursive(preview_node)
@@ -584,11 +588,10 @@ func _enter_tree() -> void:
 	super._enter_tree()
 	speed_tag_group_name = OIPCommsSetup.default_tag_group(speed_tag_group_name)
 	running_tag_group_name = OIPCommsSetup.default_tag_group(running_tag_group_name)
-	if Engine.is_editor_hint():
-		if not EditorInterface.simulation_started.is_connected(_on_simulation_started):
-			EditorInterface.simulation_started.connect(_on_simulation_started)
-		if not EditorInterface.simulation_stopped.is_connected(_on_simulation_ended):
-			EditorInterface.simulation_stopped.connect(_on_simulation_ended)
+	if not Simulation.started.is_connected(_on_simulation_started):
+		Simulation.started.connect(_on_simulation_started)
+	if not Simulation.stopped.is_connected(_on_simulation_ended):
+		Simulation.stopped.connect(_on_simulation_ended)
 	OIPCommsSetup.connect_comms(self, _tag_group_initialized, _tag_group_polled)
 	ConveyorSnapping.notify_contacts_rebuild(self)
 
@@ -669,7 +672,7 @@ func _ensure_unique_segments() -> void:
 		var seg: BeltSegment = segments[i]
 		if seg == null:
 			continue
-		var owner_id: int = int(seg.get_meta(META, 0))
+		var owner_id: int = seg.get_meta(META, 0)
 		if owner_id == 0 or owner_id == get_instance_id():
 			seg.set_meta(META, get_instance_id())
 			seg.resource_local_to_scene = true
@@ -689,19 +692,18 @@ func _exit_tree() -> void:
 	_disconnect_segment_signals()
 	if is_instance_valid(_flow_arrow):
 		FlowDirectionArrow.unregister(_flow_arrow)
-	if Engine.is_editor_hint():
-		if EditorInterface.simulation_started.is_connected(_on_simulation_started):
-			EditorInterface.simulation_started.disconnect(_on_simulation_started)
-		if EditorInterface.simulation_stopped.is_connected(_on_simulation_ended):
-			EditorInterface.simulation_stopped.disconnect(_on_simulation_ended)
+	if Simulation.started.is_connected(_on_simulation_started):
+		Simulation.started.disconnect(_on_simulation_started)
+	if Simulation.stopped.is_connected(_on_simulation_ended):
+		Simulation.stopped.disconnect(_on_simulation_ended)
 	OIPCommsSetup.disconnect_comms(self, _tag_group_initialized, _tag_group_polled)
 	super._exit_tree()
 
 
 func _on_simulation_started() -> void:
 	if enable_comms:
-		_speed_tag.register(speed_tag_group_name, speed_tag_name)
-		_running_tag.register(running_tag_group_name, running_tag_name)
+		_speed_tag.register(speed_tag_group_name, speed_tag_name, OIPComms.TAG_TYPE_FLOAT32)
+		_running_tag.register(running_tag_group_name, running_tag_name, OIPComms.TAG_TYPE_BOOL)
 
 
 func _on_simulation_ended() -> void:
@@ -748,10 +750,6 @@ func _do_connection_rebuild() -> void:
 		return
 	_derive_side_guard_openings()
 	_rebuild_side_guards()
-
-
-func _request_legs_recheck() -> void:
-	_rebuild_legs()
 
 
 func _rebuild() -> void:
@@ -917,7 +915,8 @@ func local_to_arc_length(local_pos: Vector3) -> float:
 	var info: Dictionary = _closest_path_point(local_pos)
 	if info.is_empty():
 		return local_pos.x
-	return float(info.s)
+	var arc_s: float = info.s
+	return arc_s
 
 
 ## Forward tangent at the closest path point. Returns +X for empty paths.
@@ -925,7 +924,8 @@ func tangent_at_local_pos(local_pos: Vector3) -> Vector3:
 	var info: Dictionary = _closest_path_point(local_pos)
 	if info.is_empty():
 		return Vector3.RIGHT
-	return info.tangent as Vector3
+	var tangent: Vector3 = info.tangent
+	return tangent
 
 
 func _closest_path_point(local_pos: Vector3) -> Dictionary:
@@ -1041,7 +1041,7 @@ func _subdivide_arc_range_around_openings(arc_back: float, arc_front: float,
 
 
 func _emit_run_guard(guard_name: String, arc_back: float, arc_front: float,
-		run: BeltPath.Run, run_basis: Basis, guard_basis: Basis,
+		run: BeltPath.Run, _run_basis: Basis, guard_basis: Basis,
 		flange_offset: Vector3, lateral_offset: Vector3) -> void:
 	var arc_mid: float = (arc_back + arc_front) * 0.5
 	var sub_len: float = arc_front - arc_back
@@ -1332,10 +1332,12 @@ func _reposition_existing_legs() -> void:
 		return
 	legs_normal_world = legs_normal_world.normalized()
 	for spec: Dictionary in _compute_leg_specs(top_len):
-		var leg := get_node_or_null(NodePath(spec["name"])) as Node3D
+		var leg_name: String = spec["name"]
+		var leg := get_node_or_null(NodePath(leg_name)) as Node3D
 		if leg == null:
 			continue
-		var sample: Transform3D = _path.sample(spec["s"])
+		var s_val: float = spec["s"]
+		var sample: Transform3D = _path.sample(s_val)
 		var belt_bottom_local: Vector3 = sample.origin - sample.basis.y * height
 		var belt_bottom_world: Vector3 = node_xform * belt_bottom_local
 		var foot_v: Variant = ConveyorLeg.resolve_foot(self, belt_bottom_world, legs_normal_world, floor_plane)
@@ -1393,13 +1395,12 @@ func _physics_process(delta: float) -> void:
 	if ConveyorLeg.legs_state_changed(self, _legs_state):
 		_rebuild_legs()
 		_legs_state = ConveyorLeg.capture_leg_state(self)
-	if Engine.is_editor_hint() and not EditorInterface.is_simulation_running():
+	if not Simulation.is_running() or Simulation.is_paused():
 		return
 	for body: StaticBody3D in _bodies:
 		BeltSurface.apply_velocity(body, speed)
-	if not (Engine.is_editor_hint() and EditorInterface.is_simulation_paused()):
-		_belt_position = BeltSurface.advance_belt_position(
-				_belt_material, speed, delta, _belt_position)
+	_belt_position = BeltSurface.advance_belt_position(
+			_belt_material, speed, delta, _belt_position)
 
 
 func _connect_segment_signals() -> void:

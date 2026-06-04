@@ -43,10 +43,9 @@ func _init() -> void:
 
 func _enter_tree() -> void:
 	super._enter_tree()
-	if Engine.is_editor_hint():
-		EditorInterface.simulation_started.connect(_on_simulation_started)
-		EditorInterface.simulation_stopped.connect(_on_simulation_ended)
-		EditorInterface.simulation_pause_toggled.connect(_on_simulation_set_paused)
+	Simulation.started.connect(_on_simulation_started)
+	Simulation.stopped.connect(_on_simulation_ended)
+	Simulation.pause_toggled.connect(_on_simulation_set_paused)
 
 
 func _ready() -> void:
@@ -54,19 +53,16 @@ func _ready() -> void:
 	if color != Color.WHITE:
 		set("color", color)
 	_rigid_body_3d.mass = mass
-	_rigid_body_3d.freeze = false  # was: not EditorInterface.is_simulation_running()
-	instanced = true
-	_rigid_body_3d.linear_velocity = initial_linear_velocity
-	add_to_group("oip_boxes")
-	if not Engine.is_editor_hint():
-		_on_simulation_started()
+	_rigid_body_3d.freeze = not Simulation.is_running()
+	if Simulation.is_running():
+		instanced = true
+		_rigid_body_3d.linear_velocity = initial_linear_velocity
 
 
 func _exit_tree() -> void:
-	if Engine.is_editor_hint():
-		EditorInterface.simulation_started.disconnect(_on_simulation_started)
-		EditorInterface.simulation_stopped.disconnect(_on_simulation_ended)
-		EditorInterface.simulation_pause_toggled.disconnect(_on_simulation_set_paused)
+	Simulation.started.disconnect(_on_simulation_started)
+	Simulation.stopped.disconnect(_on_simulation_ended)
+	Simulation.pause_toggled.disconnect(_on_simulation_set_paused)
 	super._exit_tree()
 	if instanced:
 		queue_free()
@@ -77,7 +73,7 @@ func _get_constrained_size(new_size: Vector3) -> Vector3:
 
 
 func selected() -> void:
-	if _paused or (Engine.is_editor_hint() and not EditorInterface.is_simulation_running()):
+	if _paused or not Simulation.is_running():
 		return
 
 	if _rigid_body_3d.freeze:
@@ -114,7 +110,7 @@ func _on_size_changed() -> void:
 		return
 
 	var mesh_instance := _mesh_instance_3d
-	var collision_shape := _rigid_body_3d.get_node_or_null("CollisionShape3D")
+	var collision_shape := _rigid_body_3d.get_node_or_null("CollisionShape3D") as CollisionShape3D
 
 	if mesh_instance:
 		mesh_instance.scale = size/2

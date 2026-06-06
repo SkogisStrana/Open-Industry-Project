@@ -456,6 +456,8 @@ func _validate_property(property: Dictionary) -> void:
 
 
 func get_snap_features() -> Array:
+	if not Engine.is_editor_hint():
+		return []
 	# Drop-from-FileSystem invokes _snap_transform before _ready; lazy-build.
 	if _path == null:
 		_path = BeltPath.build(segments, 0.0, 0.0, 0.0, height)
@@ -582,10 +584,11 @@ func _enter_tree() -> void:
 	super._enter_tree()
 	speed_tag_group_name = OIPCommsSetup.default_tag_group(speed_tag_group_name)
 	running_tag_group_name = OIPCommsSetup.default_tag_group(running_tag_group_name)
-	if not EditorInterface.simulation_started.is_connected(_on_simulation_started):
-		EditorInterface.simulation_started.connect(_on_simulation_started)
-	if not EditorInterface.simulation_stopped.is_connected(_on_simulation_ended):
-		EditorInterface.simulation_stopped.connect(_on_simulation_ended)
+	if Engine.is_editor_hint():
+		if not EditorInterface.simulation_started.is_connected(_on_simulation_started):
+			EditorInterface.simulation_started.connect(_on_simulation_started)
+		if not EditorInterface.simulation_stopped.is_connected(_on_simulation_ended):
+			EditorInterface.simulation_stopped.connect(_on_simulation_ended)
 	OIPCommsSetup.connect_comms(self, _tag_group_initialized, _tag_group_polled)
 	ConveyorSnapping.notify_contacts_rebuild(self)
 
@@ -686,10 +689,11 @@ func _exit_tree() -> void:
 	_disconnect_segment_signals()
 	if is_instance_valid(_flow_arrow):
 		FlowDirectionArrow.unregister(_flow_arrow)
-	if EditorInterface.simulation_started.is_connected(_on_simulation_started):
-		EditorInterface.simulation_started.disconnect(_on_simulation_started)
-	if EditorInterface.simulation_stopped.is_connected(_on_simulation_ended):
-		EditorInterface.simulation_stopped.disconnect(_on_simulation_ended)
+	if Engine.is_editor_hint():
+		if EditorInterface.simulation_started.is_connected(_on_simulation_started):
+			EditorInterface.simulation_started.disconnect(_on_simulation_started)
+		if EditorInterface.simulation_stopped.is_connected(_on_simulation_ended):
+			EditorInterface.simulation_stopped.disconnect(_on_simulation_ended)
 	OIPCommsSetup.disconnect_comms(self, _tag_group_initialized, _tag_group_polled)
 	super._exit_tree()
 

@@ -37,25 +37,29 @@ func _init() -> void:
 
 func _enter_tree() -> void:
 	super._enter_tree()
-	EditorInterface.simulation_started.connect(_on_simulation_started)
-	EditorInterface.simulation_stopped.connect(_on_simulation_ended)
-	EditorInterface.simulation_pause_toggled.connect(_on_simulation_set_paused)
+	if Engine.is_editor_hint():
+		EditorInterface.simulation_started.connect(_on_simulation_started)
+		EditorInterface.simulation_stopped.connect(_on_simulation_ended)
+		EditorInterface.simulation_pause_toggled.connect(_on_simulation_set_paused)
 
 
 func _ready() -> void:
 	_on_size_changed()
 	if color != Color.WHITE:
 		set("color", color)
-	_rigid_body_3d.freeze = not EditorInterface.is_simulation_running()
-	if EditorInterface.is_simulation_running():
-		instanced = true
-		_rigid_body_3d.linear_velocity = initial_linear_velocity
+	_rigid_body_3d.freeze = false  # was: not EditorInterface.is_simulation_running()
+	instanced = true
+	_rigid_body_3d.linear_velocity = initial_linear_velocity
+	add_to_group("oip_boxes")
+	if not Engine.is_editor_hint():
+		_on_simulation_started()
 
 
 func _exit_tree() -> void:
-	EditorInterface.simulation_started.disconnect(_on_simulation_started)
-	EditorInterface.simulation_stopped.disconnect(_on_simulation_ended)
-	EditorInterface.simulation_pause_toggled.disconnect(_on_simulation_set_paused)
+	if Engine.is_editor_hint():
+		EditorInterface.simulation_started.disconnect(_on_simulation_started)
+		EditorInterface.simulation_stopped.disconnect(_on_simulation_ended)
+		EditorInterface.simulation_pause_toggled.disconnect(_on_simulation_set_paused)
 	super._exit_tree()
 	if instanced:
 		queue_free()
@@ -66,7 +70,7 @@ func _get_constrained_size(new_size: Vector3) -> Vector3:
 
 
 func selected() -> void:
-	if _paused or not EditorInterface.is_simulation_running():
+	if _paused or (Engine.is_editor_hint() and not EditorInterface.is_simulation_running()):
 		return
 
 	if _rigid_body_3d.freeze:

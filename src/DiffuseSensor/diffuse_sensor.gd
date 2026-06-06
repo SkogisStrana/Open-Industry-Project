@@ -37,7 +37,7 @@ extends Node3D
 		output = value
 
 var _mesh: ImmediateMesh
-static var _beam_material: StandardMaterial3D = preload("uid://ntmcfd25jgpm")
+static var _beam_material: StandardMaterial3D = preload("res://assets/3DModels/sensor_beam_material.tres")
 var _instance: RID
 var _scenario: RID
 var _ray_query: PhysicsRayQueryParameters3D
@@ -83,14 +83,16 @@ func _enter_tree() -> void:
 	_ray_query.collision_mask = 8
 
 	tag_group_name = OIPCommsSetup.default_tag_group(tag_group_name)
-	EditorInterface.simulation_started.connect(_on_simulation_started)
+	if Engine.is_editor_hint():
+		EditorInterface.simulation_started.connect(_on_simulation_started)
 	OIPCommsSetup.connect_comms(self, _tag_group_initialized)
 
 
 func _exit_tree() -> void:
 	RenderingServer.free_rid(_instance)
 	SensorBeamCache.clear_beam(get_instance_id())
-	EditorInterface.simulation_started.disconnect(_on_simulation_started)
+	if Engine.is_editor_hint():
+		EditorInterface.simulation_started.disconnect(_on_simulation_started)
 	OIPCommsSetup.disconnect_comms(self, _tag_group_initialized)
 
 

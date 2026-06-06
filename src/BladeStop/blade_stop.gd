@@ -55,6 +55,8 @@ func _validate_property(property: Dictionary) -> void:
 
 
 func get_snap_features() -> Array:
+	if not Engine.is_editor_hint():
+		return []
 	return [
 		{
 			"shape": ConveyorSnapFeatures.Shape.POINT,
@@ -62,7 +64,6 @@ func get_snap_features() -> Array:
 			"local_pos": Vector3(SNAP_BLADE_X_OFFSET, 0, 0),
 			"local_outward": Vector3(0, 1, 0),
 			"target_local_y": ConveyorSnapFeatures.BLADE_STOP_TARGET_LOCAL_Y,
-			# Loose threshold so drops near a roller conveyor still catch.
 			"visible_threshold": 2.0,
 			"auto_fit_target_width": true,
 			"native_z_width": SNAP_NATIVE_Z_WIDTH,
@@ -90,17 +91,19 @@ func _disable_collisions_recursive(node: Node) -> void:
 
 
 func _enter_tree() -> void:
-	if has_meta("is_preview"):
+	if Engine.is_editor_hint() and has_meta("is_preview"):
 		return
 	tag_group_name = OIPCommsSetup.default_tag_group(tag_group_name)
-	EditorInterface.simulation_started.connect(_on_simulation_started)
+	if Engine.is_editor_hint():
+		EditorInterface.simulation_started.connect(_on_simulation_started)
 	OIPCommsSetup.connect_comms(self, _tag_group_initialized, _tag_group_polled)
 
 
 func _exit_tree() -> void:
-	if has_meta("is_preview"):
+	if Engine.is_editor_hint() and has_meta("is_preview"):
 		return
-	EditorInterface.simulation_started.disconnect(_on_simulation_started)
+	if Engine.is_editor_hint():
+		EditorInterface.simulation_started.disconnect(_on_simulation_started)
 	OIPCommsSetup.disconnect_comms(self, _tag_group_initialized, _tag_group_polled)
 
 

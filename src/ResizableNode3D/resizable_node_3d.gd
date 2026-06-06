@@ -59,7 +59,7 @@ func _notification(what: int) -> void:
 			if not scale.is_equal_approx(Vector3.ONE) and not transform_in_progress:
 				scale = Vector3.ONE
 
-				if not _scale_notification_cooldown:
+				if Engine.is_editor_hint() and not _scale_notification_cooldown:
 					_scale_notification_cooldown = true
 					EditorInterface.get_editor_toaster().push_toast(
 						_get_scale_warning_text(),
@@ -74,16 +74,18 @@ func _get_scale_warning_text() -> String:
 	return "Please use the 'size' property instead of scale."
 
 func _enter_tree() -> void:
-	if not EditorInterface.transform_requested.is_connected(_transform_requested):
-		EditorInterface.transform_requested.connect(_transform_requested)
-	if not EditorInterface.transform_commited.is_connected(_transform_commited):
-		EditorInterface.transform_commited.connect(_transform_commited)
+	if Engine.is_editor_hint():
+		if not EditorInterface.transform_requested.is_connected(_transform_requested):
+			EditorInterface.transform_requested.connect(_transform_requested)
+		if not EditorInterface.transform_commited.is_connected(_transform_commited):
+			EditorInterface.transform_commited.connect(_transform_commited)
 
 func _exit_tree() -> void:
-	if EditorInterface.transform_requested.is_connected(_transform_requested):
-		EditorInterface.transform_requested.disconnect(_transform_requested)
-	if EditorInterface.transform_commited.is_connected(_transform_commited):
-		EditorInterface.transform_commited.disconnect(_transform_commited)
+	if Engine.is_editor_hint():
+		if EditorInterface.transform_requested.is_connected(_transform_requested):
+			EditorInterface.transform_requested.disconnect(_transform_requested)
+		if EditorInterface.transform_commited.is_connected(_transform_commited):
+			EditorInterface.transform_commited.disconnect(_transform_commited)
 
 func _transform_requested(data: Dictionary) -> void:
 	if not EditorInterface.get_selection().get_selected_nodes().has(self):

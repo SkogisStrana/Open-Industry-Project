@@ -42,6 +42,12 @@ signal roller_override_material_changed(material: Material)
 			roller_skew_angle_changed.emit(skew_angle)
 			_update_conveyor_velocity()
 			_update_transfer_plates()
+			_update_guard_sensors()
+
+## How firmly skewed rollers square cargo against the side guards. 1.0 is the default
+## response; higher acts like a grippier rail, 0.0 disables squaring. The skew/speed-derived
+## limit still caps the maximum rate regardless of this value.
+@export_range(0.0, 4.0, 0.1, "or_greater") var cargo_align_strength: float = 1.0
 
 @export_custom(PROPERTY_HINT_NONE, "suffix:m/s") var speed: float = 1.0:
 	set(value):
@@ -55,7 +61,7 @@ signal roller_override_material_changed(material: Material)
 			_running_tag.write_bit(value != 0.0)
 
 ## Physics material applied to the conveyor body.
-@export var physics_material: PhysicsMaterial = preload("res://addons/oip/parts/RollerSurfaceMaterial.tres"):
+@export var physics_material: PhysicsMaterial = preload("res://parts/RollerSurfaceMaterial.tres"):
 	set(value):
 		physics_material = value
 		_apply_physics_material()
@@ -95,7 +101,7 @@ signal roller_override_material_changed(material: Material)
 			return
 		floor_plane = value
 		_request_legs_refresh()
-@export var leg_model_scene: PackedScene = preload("res://addons/oip/parts/ConveyorLeg.tscn"):
+@export var leg_model_scene: PackedScene = preload("res://parts/StraightLeg.tscn"):
 	set(value):
 		leg_model_scene = value
 		_request_legs_refresh()
@@ -206,24 +212,25 @@ var _metal_material: Material
 var _rollers: AbstractRollerContainer
 var _roller_material: BaseMaterial3D
 var _simple_conveyor_shape: StaticBody3D
-var _transfer_plate_discharge: MeshInstance3D
-var _transfer_plate_infeed: MeshInstance3D
-var _transfer_plate_discharge_opp: MeshInstance3D
-var _transfer_plate_infeed_opp: MeshInstance3D
-var _transfer_plate_material: StandardMaterial3D
+var _transfer_plates: MeshInstance3D
 var _side_guards: Array[SideGuard] = []
 var _derived_side_guard_openings: Array[SideGuardOpening] = []
 var _legs: Array[Node3D] = []
 var _side_guard_rebuild_pending: bool = false
 var _legs_refresh_pending: bool = false
+var _roller_refresh_pending: bool = false
+var _last_grid_anchor: Variant = null
 const _MIN_GUARD_LEN: float = 0.05
+const CARGO_ALIGN_GAIN := 5.0
+const CARGO_ALIGN_MAX_SPEED := 2.5
+const CARGO_ALIGN_LENGTH := 0.3
 const _LEG_TAIL_NAME := "Leg_Tail"
 const _LEG_HEAD_NAME := "Leg_Head"
 const _LEG_MIDDLE_PREFIX := "Leg_Middle_"
 
 
 func _get_custom_preview_node() -> Node3D:
-	var preview_scene := load("res://addons/oip/parts/RollerConveyor.tscn") as PackedScene
+	var preview_scene := load("res://parts/RollerConveyor.tscn") as PackedScene
 	var preview_node := preview_scene.instantiate(PackedScene.GEN_EDIT_STATE_DISABLED) as Node3D
 	preview_node.set_meta("is_preview", true)
 
@@ -239,11 +246,12 @@ func _get_custom_preview_node() -> Node3D:
 
 func _disable_collisions_recursive(node: Node) -> void:
 	if node is CollisionShape3D:
-		node.disabled = true
+		(node as CollisionShape3D).disabled = true
 
 	if node is CollisionObject3D:
-		node.collision_layer = 0
-		node.collision_mask = 0
+		var body := node as CollisionObject3D
+		body.collision_layer = 0
+		body.collision_mask = 0
 
 	for child in node.get_children():
 		_disable_collisions_recursive(child)
@@ -259,10 +267,11 @@ func _enter_tree() -> void:
 
 	speed_tag_group_name = OIPCommsSetup.default_tag_group(speed_tag_group_name)
 	running_tag_group_name = OIPCommsSetup.default_tag_group(running_tag_group_name)
-	if Engine.is_editor_hint():
-		EditorInterface.simulation_started.connect(_on_simulation_started)
-		EditorInterface.simulation_stopped.connect(_on_simulation_ended)
-		running = EditorInterface.is_simulation_running()
+	if not Simulation.started.is_connected(_on_simulation_started):
+		Simulation.started.connect(_on_simulation_started)
+	if not Simulation.stopped.is_connected(_on_simulation_ended):
+		Simulation.stopped.connect(_on_simulation_ended)
+	running = Simulation.is_running()
 
 	OIPCommsSetup.connect_comms(self, _tag_group_initialized, _tag_group_polled)
 	ConveyorSnapping.notify_contacts_rebuild(self)
@@ -295,11 +304,10 @@ func _exit_tree() -> void:
 	ConveyorSnapping.notify_contacts_rebuild(self)
 	if _flow_arrow:
 		FlowDirectionArrow.unregister(_flow_arrow)
-	if Engine.is_editor_hint():
-		if EditorInterface.simulation_started.is_connected(_on_simulation_started):
-			EditorInterface.simulation_started.disconnect(_on_simulation_started)
-		if EditorInterface.simulation_stopped.is_connected(_on_simulation_ended):
-			EditorInterface.simulation_stopped.disconnect(_on_simulation_ended)
+	if Simulation.started.is_connected(_on_simulation_started):
+		Simulation.started.disconnect(_on_simulation_started)
+	if Simulation.stopped.is_connected(_on_simulation_ended):
+		Simulation.stopped.disconnect(_on_simulation_ended)
 
 	OIPCommsSetup.disconnect_comms(self, _tag_group_initialized, _tag_group_polled)
 
@@ -322,6 +330,7 @@ func _ready() -> void:
 	SideGuardOpening.sync_change_listeners([], side_guard_openings, _request_side_guard_rebuild)
 	_rebuild_side_guards()
 	_rebuild_legs()
+	_request_roller_refresh()
 	_bind_snap_meta_now()
 
 
@@ -339,9 +348,7 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_TRANSFORM_CHANGED:
 		_request_legs_refresh()
 		_request_side_guard_rebuild()
-		# Re-phase rollers onto the world grid so a move stays continuous with neighbours.
-		if _rollers is MultiMeshRollers:
-			_rollers.setup_existing_rollers()
+		_request_roller_refresh()
 		ConveyorSnapping.notify_contacts_rebuild(self)
 
 
@@ -412,15 +419,16 @@ func _update_flow_arrow() -> void:
 
 
 func _physics_process(_delta: float) -> void:
-	if ConveyorLeg.legs_state_changed(self, _legs_state):
+	if LegFooting.legs_state_changed(self, _legs_state):
 		_rebuild_legs()
-		_legs_state = ConveyorLeg.capture_leg_state(self)
+		_legs_state = LegFooting.capture_leg_state(self)
 	if running and _roller_material:
 		var roller_speed := speed / cos(deg_to_rad(skew_angle)) if absf(skew_angle) < 89.0 else speed
 		var circumference := 2.0 * PI * _roller_radius()
 		# Multiply by tiles-per-wrap (uv1_scale.x) so the surface tracks the belt at no-slip speed.
 		var bands: float = _roller_material.uv1_scale.x
 		_roller_material.uv1_offset.x = fmod(_roller_material.uv1_offset.x + bands * roller_speed * _delta / circumference, 1.0)
+	_align_cargo_to_guards()
 
 
 func set_roller_override_material(material: Material) -> void:
@@ -441,7 +449,8 @@ func _setup_material() -> void:
 
 
 func _setup_roller_initialization() -> void:
-	set_roller_override_material(load("res://addons/oip/assets/3DModels/Materials/Metall2.tres").duplicate(true))
+	var roller_material: Material = load("res://assets/3DModels/Materials/Metall2.tres").duplicate(true)
+	set_roller_override_material(roller_material)
 
 	_rollers = get_node_or_null("Rollers")
 
@@ -519,7 +528,7 @@ func _setup_collision_shape() -> void:
 
 
 func _update_component_positions() -> void:
-	var conv_roller := get_node_or_null("ConvRoller")
+	var conv_roller := get_node_or_null("ConvRoller") as Node3D
 	if conv_roller:
 		var frame_height := size.y
 
@@ -543,13 +552,12 @@ func _update_component_positions() -> void:
 			right_side.position = Vector3(size.x / 2.0, 0, half_width + wt)
 			right_side.rotation = Vector3(0, PI, 0)
 
-	var rollers_node := get_node_or_null("Rollers")
+	var rollers_node := get_node_or_null("Rollers") as Node3D
 	if rollers_node:
 		rollers_node.position = Vector3(0, -_roller_radius(), 0)
 		rollers_node.scale = Vector3.ONE
-		# Drive coverage explicitly so the roller layout never depends on node-position timing.
 		if rollers_node is MultiMeshRollers:
-			rollers_node.set_clip_span(0.0, size.x)
+			(rollers_node as MultiMeshRollers).set_clip_span(0.0, size.x)
 
 
 func _update_width() -> void:
@@ -625,8 +633,8 @@ func _on_simulation_started() -> void:
 	running = true
 	_update_conveyor_velocity()
 	if enable_comms:
-		_speed_tag.register(speed_tag_group_name, speed_tag_name)
-		_running_tag.register(running_tag_group_name, running_tag_name)
+		_speed_tag.register(speed_tag_group_name, speed_tag_name, OIPComms.TAG_TYPE_FLOAT32)
+		_running_tag.register(running_tag_group_name, running_tag_name, OIPComms.TAG_TYPE_BOOL)
 
 
 func _on_simulation_ended() -> void:
@@ -652,24 +660,15 @@ func _tag_group_polled(tag_group_name_param: String) -> void:
 
 
 func _setup_transfer_plates() -> void:
-	_transfer_plate_material = StandardMaterial3D.new()
-	_transfer_plate_material.albedo_color = Color(0.337, 0.655, 0.784)
-	_transfer_plate_material.albedo_texture = load("res://addons/oip/assets/3DModels/Textures/Metal.png")
-	_transfer_plate_material.metallic = 0.8
-	_transfer_plate_material.roughness = 0.3
-	_transfer_plate_material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	for legacy: String in ["TransferPlateDischarge", "TransferPlateInfeed",
+			"TransferPlateDischargeOpp", "TransferPlateInfeedOpp"]:
+		var old := get_node_or_null(legacy)
+		if old:
+			remove_child(old)
+			old.queue_free()
 
-	_transfer_plate_discharge = _get_or_create_internal_child("TransferPlateDischarge")
-	_transfer_plate_discharge.material_override = _transfer_plate_material
-
-	_transfer_plate_infeed = _get_or_create_internal_child("TransferPlateInfeed")
-	_transfer_plate_infeed.material_override = _transfer_plate_material
-
-	_transfer_plate_discharge_opp = _get_or_create_internal_child("TransferPlateDischargeOpp")
-	_transfer_plate_discharge_opp.material_override = _transfer_plate_material
-
-	_transfer_plate_infeed_opp = _get_or_create_internal_child("TransferPlateInfeedOpp")
-	_transfer_plate_infeed_opp.material_override = _transfer_plate_material
+	_transfer_plates = _get_or_create_internal_child("TransferPlates")
+	_transfer_plates.material_override = ConveyorFrameMesh.create_material_colored(Color.WHITE)
 
 
 func _get_or_create_internal_child(child_name: String) -> MeshInstance3D:
@@ -683,17 +682,11 @@ func _get_or_create_internal_child(child_name: String) -> MeshInstance3D:
 
 
 func _update_transfer_plates() -> void:
-	var plates: Array[MeshInstance3D] = [
-		_transfer_plate_discharge, _transfer_plate_infeed,
-		_transfer_plate_discharge_opp, _transfer_plate_infeed_opp,
-	]
-
-	if plates.any(func(p: MeshInstance3D) -> bool: return p == null):
+	if _transfer_plates == null:
 		return
 
 	if absf(skew_angle) < 0.01:
-		for plate in plates:
-			plate.visible = false
+		_transfer_plates.visible = false
 		return
 
 	var head_x: float = size.x
@@ -708,45 +701,37 @@ func _update_transfer_plates() -> void:
 	var z_sign := signf(skew_angle)
 	var skirt_depth := _roller_radius() * 2.0
 
-	for plate in plates:
-		plate.visible = true
-
-	_transfer_plate_discharge.mesh = _create_transfer_plate_mesh(
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	_add_transfer_plate(st,
 		Vector3(head_inset, plate_y, z_sign * half_w),
 		Vector3(head_x, plate_y, z_sign * half_w),
 		Vector3(head_x, plate_y, 0.0),
-		skirt_depth,
-	)
-
-	_transfer_plate_discharge_opp.mesh = _create_transfer_plate_mesh(
+		skirt_depth)
+	_add_transfer_plate(st,
 		Vector3(head_inset, plate_y, -z_sign * half_w),
 		Vector3(head_x, plate_y, -z_sign * half_w),
 		Vector3(head_x, plate_y, 0.0),
-		skirt_depth,
-	)
-
-	_transfer_plate_infeed.mesh = _create_transfer_plate_mesh(
+		skirt_depth)
+	_add_transfer_plate(st,
 		Vector3(tail_inset, plate_y, -z_sign * half_w),
 		Vector3(tail_x, plate_y, -z_sign * half_w),
 		Vector3(tail_x, plate_y, 0.0),
-		skirt_depth,
-	)
-
-	_transfer_plate_infeed_opp.mesh = _create_transfer_plate_mesh(
+		skirt_depth)
+	_add_transfer_plate(st,
 		Vector3(tail_inset, plate_y, z_sign * half_w),
 		Vector3(tail_x, plate_y, z_sign * half_w),
 		Vector3(tail_x, plate_y, 0.0),
-		skirt_depth,
-	)
+		skirt_depth)
+	st.generate_normals()
+
+	_transfer_plates.mesh = st.commit()
+	_transfer_plates.visible = true
 
 
-## Triangle (v1-v2-v3) plus vertical skirts hiding shortened roller ends.
-static func _create_transfer_plate_mesh(
-	v1: Vector3, v2: Vector3, v3: Vector3, skirt_depth: float
-) -> ArrayMesh:
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-
+static func _add_transfer_plate(
+	st: SurfaceTool, v1: Vector3, v2: Vector3, v3: Vector3, skirt_depth: float
+) -> void:
 	var v1_bottom := v1 - Vector3(0, skirt_depth, 0)
 	var v2_bottom := v2 - Vector3(0, skirt_depth, 0)
 	var v3_bottom := v3 - Vector3(0, skirt_depth, 0)
@@ -759,14 +744,13 @@ static func _create_transfer_plate_mesh(
 	_add_tri(st, v2, v2_bottom, v3_bottom)
 	_add_tri(st, v3_bottom, v3, v2)
 
-	st.generate_normals()
-	return st.commit()
-
 
 static func _add_tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3) -> void:
-	st.set_uv(Vector2(0, 0)); st.add_vertex(a)
-	st.set_uv(Vector2(1, 0)); st.add_vertex(b)
-	st.set_uv(Vector2(1, 1)); st.add_vertex(c)
+	var u_dir := (b - a).normalized()
+	var v_dir := (b - a).cross(c - a).normalized().cross(u_dir)
+	st.set_uv(Vector2(0.0, 0.0)); st.add_vertex(a)
+	st.set_uv(Vector2((b - a).dot(u_dir), (b - a).dot(v_dir))); st.add_vertex(b)
+	st.set_uv(Vector2((c - a).dot(u_dir), (c - a).dot(v_dir))); st.add_vertex(c)
 
 
 func request_side_guard_opening(arc_back: float, arc_front: float, side: String) -> void:
@@ -792,10 +776,50 @@ func _request_side_guard_rebuild() -> void:
 	call_deferred("_rebuild_side_guards")
 
 
-## Intentionally narrow: connections only drive side guards here. If a future
-## change makes them drive legs/rollers/frame, broaden this to a full rebuild.
 func _request_rebuild() -> void:
 	_request_side_guard_rebuild()
+	_request_roller_refresh()
+
+
+func _request_legs_recheck() -> void:
+	_rebuild_legs()
+
+
+func _request_roller_refresh() -> void:
+	if _roller_refresh_pending or not is_inside_tree():
+		return
+	_roller_refresh_pending = true
+	call_deferred("_refresh_rollers")
+
+
+func _refresh_rollers() -> void:
+	_roller_refresh_pending = false
+	if not (_rollers is MultiMeshRollers) or not is_inside_tree():
+		return
+	var mm: MultiMeshRollers = _rollers
+	var grid: Dictionary = ConveyorSnapping.resolve_roller_grid(self)
+	var anchor: Variant = grid.anchor
+	var back_butt: bool = grid.back_butt
+	var front_butt: bool = grid.front_butt
+	mm.set_grid(anchor, not back_butt, not front_butt)
+	# On anchor change, re-ping so the curve's phase propagates down the chain; gated so it settles.
+	if _grid_anchor_changed(anchor, _last_grid_anchor):
+		_last_grid_anchor = anchor
+		ConveyorSnapping.notify_contacts_rebuild(self)
+
+
+func get_roller_grid_anchor() -> Variant:
+	return _last_grid_anchor
+
+
+static func _grid_anchor_changed(a: Variant, b: Variant) -> bool:
+	var a_vec: bool = a is Vector3
+	var b_vec: bool = b is Vector3
+	if a_vec and b_vec:
+		var av: Vector3 = a
+		var bv: Vector3 = b
+		return not av.is_equal_approx(bv)
+	return a_vec != b_vec
 
 
 ## True arc extent of the side guard (origin at tail), default span for a new opening.
@@ -876,7 +900,62 @@ func _emit_side_guard(guard_name: String, sub_start: float, sub_end: float,
 	sg.transform = Transform3D(guard_basis, origin)
 	sg.arc_back = sub_start
 	sg.arc_front = sub_end
+	sg.set_cargo_sensor_enabled(absf(skew_angle) > 0.01)
 	_side_guards.append(sg)
+
+
+func _update_guard_sensors() -> void:
+	var skewed := absf(skew_angle) > 0.01
+	for guard in _side_guards:
+		if is_instance_valid(guard):
+			guard.set_cargo_sensor_enabled(skewed)
+
+
+# Skewed rollers are faked as a flat driven plane that can't impart yaw, so the squaring a
+# real skewed-roller bed does against a rail is applied here instead.
+func _align_cargo_to_guards() -> void:
+	if not running or speed == 0.0 or absf(skew_angle) <= 0.01 or cargo_align_strength == 0.0:
+		return
+	var up: Vector3 = global_transform.basis.y.normalized()
+	var wall: Vector3 = global_transform.basis.x.slide(up)
+	if wall.length_squared() < 1e-4:
+		return
+	wall = wall.normalized()
+	var skew_rad := deg_to_rad(clampf(absf(skew_angle), 0.0, 80.0))
+	var cap: float = minf(absf(speed) * tan(skew_rad) / CARGO_ALIGN_LENGTH, CARGO_ALIGN_MAX_SPEED)
+	for guard in _side_guards:
+		if not is_instance_valid(guard):
+			continue
+		for body in guard.get_overlapping_cargo():
+			var rb := body as RigidBody3D
+			if rb != null and not rb.freeze:
+				_square_cargo(rb, up, wall, cap)
+
+
+func _square_cargo(rb: RigidBody3D, up: Vector3, wall: Vector3, cap: float) -> void:
+	var bx: Vector3 = rb.global_transform.basis.x.slide(up)
+	var bz: Vector3 = rb.global_transform.basis.z.slide(up)
+	if bx.length_squared() < 1e-4 or bz.length_squared() < 1e-4:
+		return
+	bx = bx.normalized()
+	bz = bz.normalized()
+	var axis: Vector3 = bx if absf(bx.dot(wall)) >= absf(bz.dot(wall)) else bz
+	var dir := signf(axis.dot(wall))
+	if dir == 0.0:
+		dir = 1.0
+	var target: Vector3 = wall * dir
+	var theta := atan2(axis.cross(target).dot(up), axis.dot(target))
+	var rate := clampf(theta * CARGO_ALIGN_GAIN * cargo_align_strength, -cap, cap)
+	if absf(rate) < 0.01:
+		return
+	var state := PhysicsServer3D.body_get_direct_state(rb.get_rid())
+	if state == null:
+		return
+	var denom: float = up.dot(state.inverse_inertia_tensor * up)
+	if denom < 1e-6:
+		return
+	var yaw_rate: float = rb.angular_velocity.dot(up)
+	rb.apply_torque_impulse(up * (rate - yaw_rate) / denom)
 
 
 func _request_legs_refresh() -> void:
@@ -912,7 +991,7 @@ func _rebuild_legs() -> void:
 		var x: float = spec["x"]
 		var belt_bottom_local: Vector3 = Vector3(x, -size.y, 0.0)
 		var belt_bottom_world: Vector3 = node_xform * belt_bottom_local
-		var foot_v: Variant = ConveyorLeg.resolve_foot(self, belt_bottom_world, legs_normal_world, floor_plane)
+		var foot_v: Variant = LegFooting.resolve_foot(self, belt_bottom_world, legs_normal_world, floor_plane)
 		if foot_v == null:
 			continue
 		var foot_world: Vector3 = foot_v
@@ -957,13 +1036,14 @@ func _reposition_existing_legs() -> void:
 		return
 	legs_normal_world = legs_normal_world.normalized()
 	for spec: Dictionary in _compute_leg_specs(size.x):
-		var leg: Node3D = get_node_or_null(NodePath(spec["name"])) as Node3D
+		var leg_name: String = spec["name"]
+		var leg: Node3D = get_node_or_null(NodePath(leg_name)) as Node3D
 		if leg == null:
 			continue
 		var x: float = spec["x"]
 		var belt_bottom_local: Vector3 = Vector3(x, -size.y, 0.0)
 		var belt_bottom_world: Vector3 = node_xform * belt_bottom_local
-		var foot_v: Variant = ConveyorLeg.resolve_foot(self, belt_bottom_world, legs_normal_world, floor_plane)
+		var foot_v: Variant = LegFooting.resolve_foot(self, belt_bottom_world, legs_normal_world, floor_plane)
 		if foot_v == null:
 			leg.visible = false
 			continue

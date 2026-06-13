@@ -72,6 +72,7 @@ collision_layer = 8
 collision_mask = 15
 mass = 1000.0
 physics_material_override = SubResource("PhysicsMaterial_vb87h")
+continuous_cd = true
 can_sleep = false
 freeze = true
 ghost_collision_filtering_enabled = true

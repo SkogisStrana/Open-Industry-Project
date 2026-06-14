@@ -1,0 +1,8 @@
+[gd_scene format=4 uid="uid://c7e1r04ws0m1j"]
+
+[ext_resource type="Script" uid="uid://qgq0ruhbl0mq" path="res://addons/oip/src/Conveyor/belt_spur_conveyor.gd" id="1_pxi51"]
+
+[node name="BeltSpurConveyor" type="Node3D"]
+script = ExtResource("1_pxi51")
+angle_downstream = -0.523599
+conveyor_count = 8

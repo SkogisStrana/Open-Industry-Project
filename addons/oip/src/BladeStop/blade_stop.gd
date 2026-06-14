@@ -31,6 +31,7 @@ const SNAP_NATIVE_Z_WIDTH: float = 1.524 / 0.448
 
 var _active_pos: float = 0.24
 var _tag := OIPCommsTag.new()
+var _tween: Tween
 @onready var _blade: StaticBody3D = $Blade
 @onready var _air_pressure_r: MeshInstance3D = $Corners/AirPressureR
 @onready var _air_pressure_l: MeshInstance3D = $Corners/AirPressureL
@@ -118,17 +119,21 @@ func use() -> void:
 
 
 func _up() -> void:
-	var tween := create_tween().set_parallel()
-	tween.tween_property(_blade, "position", Vector3(_blade.position.x, air_pressure_height + _active_pos, _blade.position.z), 0.15)
-	tween.tween_property(_blade_corner_r, "position", Vector3(_blade_corner_r.position.x, _active_pos, _blade_corner_r.position.z), 0.15)
-	tween.tween_property(_blade_corner_l, "position", Vector3(_blade_corner_l.position.x, _active_pos, _blade_corner_l.position.z), 0.15)
+	if _tween:
+		_tween.kill()
+	_tween = create_tween().set_parallel()
+	_tween.tween_property(_blade, "position", Vector3(_blade.position.x, air_pressure_height + _active_pos, _blade.position.z), 0.15)
+	_tween.tween_property(_blade_corner_r, "position", Vector3(_blade_corner_r.position.x, _active_pos, _blade_corner_r.position.z), 0.15)
+	_tween.tween_property(_blade_corner_l, "position", Vector3(_blade_corner_l.position.x, _active_pos, _blade_corner_l.position.z), 0.15)
 
 
 func _down() -> void:
-	var tween := create_tween().set_parallel()
-	tween.tween_property(_blade, "position", Vector3(_blade.position.x, air_pressure_height, _blade.position.z), 0.15)
-	tween.tween_property(_blade_corner_r, "position", Vector3(_blade_corner_r.position.x, 0, _blade_corner_r.position.z), 0.15)
-	tween.tween_property(_blade_corner_l, "position", Vector3(_blade_corner_l.position.x, 0, _blade_corner_l.position.z), 0.15)
+	if _tween:
+		_tween.kill()
+	_tween = create_tween().set_parallel()
+	_tween.tween_property(_blade, "position", Vector3(_blade.position.x, air_pressure_height, _blade.position.z), 0.15)
+	_tween.tween_property(_blade_corner_r, "position", Vector3(_blade_corner_r.position.x, 0, _blade_corner_r.position.z), 0.15)
+	_tween.tween_property(_blade_corner_l, "position", Vector3(_blade_corner_l.position.x, 0, _blade_corner_l.position.z), 0.15)
 
 
 func _on_simulation_started() -> void:

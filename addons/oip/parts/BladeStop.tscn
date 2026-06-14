@@ -32,7 +32,7 @@ size = Vector3(0.42, 0.91, 2.895)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 0.448, 0, 0, 0)
 script = ExtResource("1_tokfa")
 
-[node name="Blade" type="StaticBody3D" parent="." unique_id=1543170829]
+[node name="Blade" type="AnimatableBody3D" parent="." unique_id=1543170829]
 collision_layer = 3
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Blade" unique_id=646551998]
@@ -62,7 +62,7 @@ mesh = ExtResource("6_y8bb3")
 [node name="BladeCornerR" type="MeshInstance3D" parent="Corners/AirPressureR" unique_id=1024072587]
 mesh = ExtResource("3_dm566")
 
-[node name="StaticBody" type="StaticBody3D" parent="Corners/AirPressureR/BladeCornerR" unique_id=1331705948]
+[node name="StaticBody" type="AnimatableBody3D" parent="Corners/AirPressureR/BladeCornerR" unique_id=1331705948]
 collision_layer = 3
 physics_material_override = ExtResource("2_ctgt5")
 
@@ -77,7 +77,7 @@ mesh = ExtResource("4_tinri")
 [node name="BladeCornerL" type="MeshInstance3D" parent="Corners/AirPressureL" unique_id=1038601249]
 mesh = ExtResource("5_qmqyj")
 
-[node name="StaticBody" type="StaticBody3D" parent="Corners/AirPressureL/BladeCornerL" unique_id=1430092770]
+[node name="StaticBody" type="AnimatableBody3D" parent="Corners/AirPressureL/BladeCornerL" unique_id=1430092770]
 collision_layer = 3
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Corners/AirPressureL/BladeCornerL/StaticBody" unique_id=1607870127]

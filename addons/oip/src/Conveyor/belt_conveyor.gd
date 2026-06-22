@@ -5,7 +5,7 @@ extends ResizableNode3D
 ## Multi-segment belt conveyor. Origin sits at the START of segment 0; +X is
 ## segment 0's tangent, +Z is across the belt.
 
-const _BeltPathCollisionScript := preload("res://src/Conveyor/belt_path_collision.gd")
+const _BeltPathCollisionScript := preload("res://addons/oip/src/Conveyor/belt_path_collision.gd")
 
 const _MIN_RUN_LENGTH: float = 0.01
 
@@ -278,7 +278,7 @@ func _segments_total_length() -> float:
 			_belt_material.set_shader_parameter("use_alternate_texture", belt_texture == BeltTexture.ALTERNATE)
 
 ## Physics material applied to per-run bodies.
-@export var physics_material: PhysicsMaterial = preload("res://parts/BeltSurfaceMaterial.tres"):
+@export var physics_material: PhysicsMaterial = preload("res://addons/oip/parts/BeltSurfaceMaterial.tres"):
 	set(value):
 		physics_material = value
 		_apply_physics_material()
@@ -330,7 +330,7 @@ func _segments_total_length() -> float:
 		floor_plane = value
 		_request_legs_refresh()
 
-@export var leg_model_scene: PackedScene = preload("res://parts/ConveyorLeg.tscn"):
+@export var leg_model_scene: PackedScene = preload("res://addons/oip/parts/ConveyorLeg.tscn"):
 	set(value):
 		leg_model_scene = value
 		_request_rebuild()
@@ -516,7 +516,7 @@ func get_snap_features() -> Array:
 # Drag-from-FileSystem preview. GEN_EDIT_STATE_INSTANCE reuses a holder whose
 # transform carries over from the previous drop — DISABLED avoids that.
 func _get_custom_preview_node() -> Node3D:
-	var preview_scene := load("res://parts/BeltConveyor.tscn") as PackedScene
+	var preview_scene := load("res://addons/oip/parts/BeltConveyor.tscn") as PackedScene
 	var preview_node := preview_scene.instantiate(PackedScene.GEN_EDIT_STATE_DISABLED) as Node3D
 	preview_node.set_meta("is_preview", true)
 	_disable_collisions_recursive(preview_node)

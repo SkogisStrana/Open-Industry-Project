@@ -61,7 +61,7 @@ signal roller_override_material_changed(material: Material)
 			_running_tag.write_bit(value != 0.0)
 
 ## Physics material applied to the conveyor body.
-@export var physics_material: PhysicsMaterial = preload("res://parts/RollerSurfaceMaterial.tres"):
+@export var physics_material: PhysicsMaterial = preload("res://addons/oip/parts/RollerSurfaceMaterial.tres"):
 	set(value):
 		physics_material = value
 		_apply_physics_material()
@@ -101,7 +101,7 @@ signal roller_override_material_changed(material: Material)
 			return
 		floor_plane = value
 		_request_legs_refresh()
-@export var leg_model_scene: PackedScene = preload("res://parts/StraightLeg.tscn"):
+@export var leg_model_scene: PackedScene = preload("res://addons/oip/parts/StraightLeg.tscn"):
 	set(value):
 		leg_model_scene = value
 		_request_legs_refresh()
@@ -230,7 +230,7 @@ const _LEG_MIDDLE_PREFIX := "Leg_Middle_"
 
 
 func _get_custom_preview_node() -> Node3D:
-	var preview_scene := load("res://parts/RollerConveyor.tscn") as PackedScene
+	var preview_scene := load("res://addons/oip/parts/RollerConveyor.tscn") as PackedScene
 	var preview_node := preview_scene.instantiate(PackedScene.GEN_EDIT_STATE_DISABLED) as Node3D
 	preview_node.set_meta("is_preview", true)
 

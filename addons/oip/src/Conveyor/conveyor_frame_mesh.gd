@@ -621,7 +621,7 @@ static func create_material() -> ShaderMaterial:
 	if _shared_material:
 		return _shared_material
 	_shared_material = ShaderMaterial.new()
-	_shared_material.shader = preload("res://src/Conveyor/conveyor_frame_shader.gdshader")
+	_shared_material.shader = preload("res://addons/oip/src/Conveyor/conveyor_frame_shader.gdshader")
 	_shared_material.set_shader_parameter("metal_texture", _metal_texture)
 	return _shared_material
 

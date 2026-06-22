@@ -170,7 +170,7 @@ func get_snap_features() -> Array:
 
 
 func _get_custom_preview_node() -> Node3D:
-	var preview_scene := load("res://parts/ColorSensor.tscn") as PackedScene
+	var preview_scene := load("res://addons/oip/parts/ColorSensor.tscn") as PackedScene
 	var preview_node := preview_scene.instantiate(PackedScene.GEN_EDIT_STATE_DISABLED) as Node3D
 	preview_node.set_meta("is_preview", true)
 	_disable_collisions_recursive(preview_node)

@@ -43,6 +43,7 @@ func _init() -> void:
 
 func _enter_tree() -> void:
 	super._enter_tree()
+	add_to_group("oip_boxes")
 	Simulation.started.connect(_on_simulation_started)
 	Simulation.stopped.connect(_on_simulation_ended)
 	Simulation.pause_toggled.connect(_on_simulation_set_paused)

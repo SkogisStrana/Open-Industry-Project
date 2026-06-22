@@ -87,10 +87,12 @@ func selected() -> void:
 
 
 func use() -> void:
-	if EditorInterface.is_transforming():
-		EditorInterface.keep_transform_freeze()
-		_rigid_body_3d.freeze = true
-		return
+	if Engine.is_editor_hint():
+		var _ei: Object = Engine.get_singleton("EditorInterface")
+		if _ei != null and _ei.call("is_transforming"):
+			_ei.call("keep_transform_freeze")
+			_rigid_body_3d.freeze = true
+			return
 	_rigid_body_3d.freeze = not _rigid_body_3d.freeze
 
 

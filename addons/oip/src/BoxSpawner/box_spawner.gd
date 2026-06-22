@@ -65,6 +65,8 @@ func _ready() -> void:
 	if Engine.is_editor_hint():
 		EditorInterface.simulation_started.connect(_on_simulation_started)
 		EditorInterface.simulation_stopped.connect(_on_simulation_ended)
+	else:
+		_preview_mesh.visible = false
 	_on_size_changed()
 	_change_texture()
 

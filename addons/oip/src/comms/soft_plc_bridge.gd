@@ -59,6 +59,6 @@ func _register_soft_plc_groups() -> void:
 			str(config.get_value(section, "name", SOFT_PLC_GROUP)),
 			int(config.get_value(section, "polling_rate", "100")),
 			"soft_plc",
-			str(config.get_value(section, "gateway", "res://oip-plc.js")),
+			str(config.get_value(section, "gateway", "res://addons/oip/oip-plc.js")),
 			str(config.get_value(section, "path", "")),
 			str(config.get_value(section, "cpu", "")))

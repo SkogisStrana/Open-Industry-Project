@@ -155,7 +155,7 @@ func update_protocol(_index: int, from_ready := false) -> void:
 		gateway_label.text = "Bundle (oip-plc.js)"
 
 		if not from_ready:
-			gateway.text = "res://oip-plc.js"
+			gateway.text = "res://addons/oip/oip-plc.js"
 			path.text = ""
 	else:  # ab_eip
 		cpu_row.show()

@@ -76,18 +76,24 @@ func _get_scale_warning_text() -> String:
 func _enter_tree() -> void:
 	if not Engine.is_editor_hint():
 		return
-	if not EditorInterface.transform_requested.is_connected(_transform_requested):
-		EditorInterface.transform_requested.connect(_transform_requested)
-	if not EditorInterface.transform_commited.is_connected(_transform_commited):
-		EditorInterface.transform_commited.connect(_transform_commited)
+	# String-based connect avoids parse errors on standard Godot (transform_requested/
+	# transform_commited are OIP-custom EditorInterface signals not in upstream Godot).
+	if EditorInterface.has_signal("transform_requested") and \
+			not EditorInterface.is_connected("transform_requested", _transform_requested):
+		EditorInterface.connect("transform_requested", _transform_requested)
+	if EditorInterface.has_signal("transform_commited") and \
+			not EditorInterface.is_connected("transform_commited", _transform_commited):
+		EditorInterface.connect("transform_commited", _transform_commited)
 
 func _exit_tree() -> void:
 	if not Engine.is_editor_hint():
 		return
-	if EditorInterface.transform_requested.is_connected(_transform_requested):
-		EditorInterface.transform_requested.disconnect(_transform_requested)
-	if EditorInterface.transform_commited.is_connected(_transform_commited):
-		EditorInterface.transform_commited.disconnect(_transform_commited)
+	if EditorInterface.has_signal("transform_requested") and \
+			EditorInterface.is_connected("transform_requested", _transform_requested):
+		EditorInterface.disconnect("transform_requested", _transform_requested)
+	if EditorInterface.has_signal("transform_commited") and \
+			EditorInterface.is_connected("transform_commited", _transform_commited):
+		EditorInterface.disconnect("transform_commited", _transform_commited)
 
 func _transform_requested(data: Dictionary) -> void:
 	if not EditorInterface.get_selection().get_selected_nodes().has(self):

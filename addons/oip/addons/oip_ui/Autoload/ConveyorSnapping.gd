@@ -84,7 +84,10 @@ static func snap_selected_conveyors() -> void:
 
 	var selection := EditorInterface.get_selection()
 	var selected_conveyors: Array[Node3D] = []
-	var target_conveyor := EditorInterface.get_active_node_3d()
+	# get_active_node_3d() is an OIP-custom EditorInterface method not in upstream Godot.
+	# Use call() to bypass parse-time validation on standard Godot builds.
+	var target_conveyor: Node3D = EditorInterface.call("get_active_node_3d") \
+		if EditorInterface.has_method("get_active_node_3d") else null
 	
 	if not target_conveyor:
 		EditorInterface.get_editor_toaster().push_toast("No active node found - please click on a target conveyor first", EditorToaster.SEVERITY_WARNING)

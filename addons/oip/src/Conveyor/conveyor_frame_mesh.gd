@@ -617,6 +617,14 @@ static func _bend_vertex(top: Vector3, normal: Vector3, p: Vector2,
 	return top + normal * (p.x - h) + cross_axis * (side_sign * (half_w + wt - p.y))
 
 
+static func create_material_colored(color: Color) -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader = preload("res://addons/oip/src/Conveyor/conveyor_frame_shader.gdshader")
+	mat.set_shader_parameter("metal_texture", _metal_texture)
+	mat.set_shader_parameter("color", color)
+	return mat
+
+
 static func create_material() -> ShaderMaterial:
 	if _shared_material:
 		return _shared_material

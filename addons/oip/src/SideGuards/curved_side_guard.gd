@@ -87,7 +87,9 @@ func _ensure_nodes() -> void:
 			# See SideGuard._update_collision_shape for rationale.
 			_body.disable_mode = StaticBody3D.DISABLE_MODE_MAKE_STATIC
 			_body.collision_mask = 8
-			_body.ghost_collision_filtering_enabled = true
+			# Property exists only in OIP's custom Godot build; stock Godot (headless container) lacks it.
+			if "ghost_collision_filtering_enabled" in _body:
+				_body.ghost_collision_filtering_enabled = true
 			var phys := PhysicsMaterial.new()
 			phys.friction = 0.0
 			_body.physics_material_override = phys

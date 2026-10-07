@@ -9,7 +9,7 @@ const WALL_THICKNESS: float = 0.01
 const FLANGE_WIDTH: float = 0.02
 const FLANGE_THICKNESS: float = 0.005
 
-static var _metal_texture: Texture2D = preload("res://assets/3DModels/Textures/Metal.png")
+static var _metal_texture: Texture2D = preload("res://addons/oip/assets/3DModels/Textures/Metal.png")
 static var _shared_material: ShaderMaterial
 
 

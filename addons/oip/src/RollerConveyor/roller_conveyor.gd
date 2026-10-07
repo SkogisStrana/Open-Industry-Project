@@ -449,7 +449,7 @@ func _setup_material() -> void:
 
 
 func _setup_roller_initialization() -> void:
-	var roller_material: Material = load("res://assets/3DModels/Materials/Metall2.tres").duplicate(true)
+	var roller_material: Material = load("res://addons/oip/assets/3DModels/Materials/Metall2.tres").duplicate(true)
 	set_roller_override_material(roller_material)
 
 	_rollers = get_node_or_null("Rollers")

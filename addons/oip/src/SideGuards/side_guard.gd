@@ -56,9 +56,7 @@ func _update_collision_shape() -> void:
 		# mask=8 sees cargo; ghost filtering blocks tunneling; friction=0 so cargo slides.
 		body.disable_mode = StaticBody3D.DISABLE_MODE_MAKE_STATIC
 		body.collision_mask = 8
-		# Property exists only in OIP's custom Godot build; stock Godot (headless container) lacks it.
-		if "ghost_collision_filtering_enabled" in body:
-			body.ghost_collision_filtering_enabled = true
+		body.ghost_collision_filtering_enabled = true
 		var phys := PhysicsMaterial.new()
 		phys.friction = 0.0
 		body.physics_material_override = phys
